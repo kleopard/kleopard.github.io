@@ -1,0 +1,515 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+<link rel="shortcut icon" type="image/png" href="icon/logo.jpg">
+
+<link rel="stylesheet" href="./modal.css">
+<title reclang="XvFp">Chiebot语音识别系统V1.0</title>
+<script>var PageLM="2024-1-22";</script>
+</head>
+
+<body>
+
+<script src="./src/recorder-core.js" onerror="!window.onBadCDN||onBadCDN()" onload="!window.onOKCDN||onOKCDN()"></script>
+
+<!-- 【1.2】引入相应格式支持文件；如果需要多个格式支持，把这些格式的编码引擎js文件放到后面统统加载进来即可。  Import the corresponding format support files; if you need multiple format support, put the encoding engine js files of these formats in the back and load them all. -->
+<script src="./src/engine/mp3.js"></script>
+<script src="./src/engine/mp3-engine.js"></script>
+
+<!-- 【1.3】引入可选的扩展支持项，如果不需要这些扩展功能可以不引入。  Import optional extended support items. If you do not need these extended functions, you do not need to import them. -->
+<script src="./src/extensions/frequency.histogram.view.js"></script>
+<script src="./src/extensions/lib.fft.js"></script>
+
+
+<div class="main">
+	<div class="mainBox topLinks">
+		<div style="font-size:32px;color:rgb(0,77,155);text-align: center;" reclang="JM2s">Chiebot语音识别系统</div>
+	</div>
+	
+	<div class="mainBox">
+	
+
+		<!-- 波形绘制区域  Waveform drawing area -->
+		<div style="padding-top:5px">
+			<div style="border:1px solid #ccc;display:inline-block;vertical-align:bottom;width: 100%;"><div style="height:100px;" class="recwave"></div></div>
+			<div style="height:40px;width:100%;margin-top:5px;display:inline-block;vertical-align:bottom;background:#999;position:relative;">
+				<div class="recpowerx" style="height:40px;background:rgb(0,77,155);position:absolute;"></div>
+				<div class="recpowert" style="padding-left:50px; line-height:40px; position: relative;"></div>
+			</div>
+		</div>
+
+			<!-- 按钮控制区域  Control button area -->
+			<div class="pd btns btn-container">
+				<!-- <div>
+					<button onclick="recOpen()" style="margin-right:10px" reclang="2KqN">打开录音,请求权限</button>
+					<button onclick="recClose()" style="margin-right:0" reclang="E0NB">关闭录音,释放资源</button>
+				</div> -->
+				
+				<button id="rec_start_or_stop_btn" class="custom-btn" onclick="check_is_record_status()" reclang="nlQN">开始录制</button>
+				
+				<button class="custom-btn" reclang="nlQN" onclick="recUpload()">开始识别</button>
+			
+				
+				<!-- <span style="display: inline-block;">
+					<button onclick="recPlay()" reclang="0TJm">开始播放</button>
+				</span> -->
+			</div>
+		
+			<div id="rec_play_area">
+				<audio controls id="custom-audio" style="width: 100%;margin-top:20px;"></audio>
+			</div>
+			
+	
+			<div id="rec_result_area"> 
+				<!--识别结果展示区域-->
+				<div id="rec_result"> 
+					<!--识别结果展示区域-->
+					识别结果: 
+				</div>
+				
+			</div>
+	</div>
+
+	<div id="overlay">
+		<div class="modal">
+		  <div class="modal-title">识别结果</div>
+		  <div class="modal-content">
+			<div id="modalText">
+				<span style="color:green;">测试数据测试数据测试数据测试数据测试数据测试数据测试数据测试数据</span>
+			</div>
+		  </div>
+		  <div class="modal-buttons">
+			
+            <button onclick="rec_success_Action()" class="button button-primary">正确</button>
+			<button onclick="rec_error_Action()" class="button button-secondary">错误</button>
+		  </div>
+		</div>
+	  </div>
+	
+</div>
+<script>
+	var rec_pred_result;
+	function send_rec_pred_result(is_correct){
+		var xhr=new XMLHttpRequest();
+		var api="http://192.168.0.136:52777/voc_rec_result";
+		var blob=recBlob
+		var onreadystatechange=function(title){
+			return function(){
+				if(xhr.readyState==4){
+					if(xhr.status==200){
+						response=JSON.parse(xhr.response)
+						if(response["status"]==1){		
+						}else{
+					
+						}
+					}
+				};
+			};
+		};
+		var reader=new FileReader();
+		reader.onloadend=function(){
+			var postData={
+				"predict_is_correct":is_correct,
+				"voice_data": (/.+;\s*base64\s*,\s*(.+)$/i.exec(reader.result)||[])[1],
+				"pred_result": rec_pred_result
+			}
+			xhr.open("POST", api);
+			xhr.setRequestHeader("Content-Type","application/json");
+			xhr.onreadystatechange=onreadystatechange(Html_$T("gG1f::上传方式一【Base64】"));
+			xhr.send(JSON.stringify(postData));
+		};
+		reader.readAsDataURL(blob);
+	}
+
+	
+	function openModal() {
+      document.getElementById("overlay").style.display = "flex";
+    }
+
+    function closeModal() {
+      document.getElementById("overlay").style.display = "none";
+    }
+	
+    function rec_success_Action() {
+	  send_rec_pred_result(1);
+      closeModal();
+    }
+	function rec_error_Action() {
+	  send_rec_pred_result(0);
+      closeModal();
+    }
+</script>
+
+
+<!-- 【3】实现录音逻辑  Implement recording logic -->
+<script>
+
+var rec,wave,recBlob;
+var is_record_flag=false;//是否正在录音
+var start_and_stop_btn=document.getElementById("rec_start_or_stop_btn");
+var audio_ele=document.getElementById("custom-audio")
+var rec_result=document.getElementById("rec_result")
+var modal_text=document.getElementById("modalText")
+
+var Html_$T=function(zh){
+	return zh;
+};
+var Html_xT=function(zh){
+	return zh;
+};
+function check_is_record_status(){
+	if(is_record_flag){
+		recStop();
+	}else{
+		recStart_without_init();
+	}
+}
+
+function reclog(content){
+	console.log(content);
+
+}
+/**调用open打开录音请求好录音权限  Call open to open the recording and request the recording permission**/
+var recOpen=function(){//一般在显示出录音按钮或相关的录音界面时进行此方法调用，后面用户点击开始录音时就能畅通无阻了
+	rec=null;
+	wave=null;
+	recBlob=null;
+	var newRec=Recorder({
+		type:"mp3",sampleRate:16000,bitRate:16 //mp3格式，指定采样率hz、比特率kbps，其他参数使用默认配置；注意：是数字的参数必须提供数字，不要用字符串；需要使用的type类型，需提前把格式支持文件加载进来，比如使用wav格式需要提前加载wav.js编码引擎
+		,onProcess:function(buffers,powerLevel,bufferDuration,bufferSampleRate,newBufferIdx,asyncEnd){
+			//录音实时回调，大约1秒调用12次本回调
+			document.querySelector(".recpowerx").style.width=powerLevel+"%";
+			document.querySelector(".recpowert").innerText=formatMs(bufferDuration,1)+" / "+powerLevel;
+			
+			//可视化图形绘制
+			wave.input(buffers[buffers.length-1],powerLevel,bufferSampleRate);
+		}
+	});
+
+	newRec.open(function(){//打开麦克风授权获得相关资源
+		rec=newRec;
+		//此处创建这些音频可视化图形绘制浏览器支持妥妥的
+		wave=Recorder.FrequencyHistogramView({elem:".recwave"});
+		reclog(Html_$T("GVCa::已打开录音，可以点击录制开始录音了"),2);
+		recStart();
+		start_and_stop_btn.innerText="停止录音";
+		is_record_flag=true;
+		
+	},function(msg,isUserNotAllow){//用户拒绝未授权或不支持
+		reclog((isUserNotAllow?"UserNotAllow, ":"")+Html_$T("TOOV::打开录音失败：")+msg,1);
+	});
+};
+
+
+
+/**关闭录音，释放资源  Close recording, release resources**/
+function recClose(){
+	if(rec){
+		rec.close();
+		reclog(Html_$T("jqOs::已关闭"));
+	}else{
+		reclog(Html_$T("VOOw::未打开录音"),1);
+	};
+};
+
+
+function recStart_without_init(){
+	//如果没有初始化，则初始化录音器
+	if((!rec) || (!Recorder.IsOpen())){
+		recOpen();
+	}
+	
+}
+/**开始录音  Start recording**/
+function recStart(){//打开了录音后才能进行start、stop调用
+	if(rec&&Recorder.IsOpen()){
+		recBlob=null;
+		rec.start();
+		reclog(Html_$T("CGdy::已开始录音...")+" "+rec.set.type+" "+rec.set.sampleRate+" "+rec.set.bitRate+"kbps");
+	}else{
+		reclog(Html_$T("ajKR::未打开录音"),1);
+	};
+};
+
+
+/**暂停录音  Passing recording**/
+function recPause(){
+	if(rec&&Recorder.IsOpen()){
+		rec.pause();
+		reclog(Html_$T("GvCy::已暂停"));
+	}else{
+		reclog(Html_$T("gCAR::未打开录音"),1);
+	};
+};
+/**恢复录音  Resume recording**/
+function recResume(){
+	if(rec&&Recorder.IsOpen()){
+		rec.resume();
+		reclog(Html_$T("5q1K::继续录音中..."));
+	}else{
+		reclog(Html_$T("Ob6S::未打开录音"),1);
+	};
+};
+
+
+/**结束录音，得到音频文件  Stop recording and get audio files**/
+function recStop(){
+	if(!(rec&&Recorder.IsOpen())){
+		reclog(Html_$T("5JuL::未打开录音"),1);
+		return;
+	};
+	rec.stop(function(blob,duration){
+		console.log(blob,(window.URL||webkitURL).createObjectURL(blob),Html_xT(Html_$T("gOix::时长:{1}ms",0,duration)));
+		recBlob=blob;
+		reclog(Html_$T("0LHf::已录制mp3：{1}ms {2}字节，可以点击播放、上传、本地下载了",0,formatMs(duration),blob.size),2);
+		recClose();
+		start_and_stop_btn.innerText="开始录音";
+		is_record_flag=false;
+		audio_ele.src=(window.URL||webkitURL).createObjectURL(recBlob);
+	},function(msg){
+		reclog(Html_$T("kGZO::录音失败:")+msg,1);
+		recClose();
+		start_and_stop_btn.innerText="开始录音";
+		is_record_flag=false;
+	});
+};
+
+
+/**播放  Play**/
+function recPlay(){
+	if(!recBlob){
+		reclog(Html_$T("tIke::请先录音，然后停止后再播放"),1);
+		return;
+	};
+	var cls=("a"+Math.random()).replace(".","");
+	reclog(Html_$T('GlWb::播放中: ')+'<span class="'+cls+'"></span>');
+	var audio=document.createElement("audio");
+	audio.controls=true;
+	document.querySelector("."+cls).appendChild(audio);
+	//简单利用URL生成播放地址，注意不用了时需要revokeObjectURL，否则霸占内存
+	audio.src=(window.URL||webkitURL).createObjectURL(recBlob);
+	audio.play();
+	
+	setTimeout(function(){
+		(window.URL||webkitURL).revokeObjectURL(audio.src);
+	},5000);
+};
+
+/**上传  Upload**/
+function recUpload(){
+	var blob=recBlob;
+	if(!blob){
+		reclog(Html_$T("DUTn::请先录音，然后停止后再上传"),1);
+		return;
+	};
+	var xhr=new XMLHttpRequest();
+	var api="http://192.168.0.136:52777/rec_voc";
+	var onreadystatechange=function(title){
+		return function(){
+			if(xhr.readyState==4){
+				if(xhr.status==200){
+					response=JSON.parse(xhr.response)
+					console.log(response)
+					if(response["status"]==1){
+						rec_result.innerHTML="识别结果: <span style='color:green;'>"+response["pred_result"]+"<\span>"
+						modal_text.innerHTML="识别结果: <span style='color:green;'>"+response["pred_result"]+"<\span>";
+						rec_pred_result=response["pred_result"]
+						openModal();
+					}else{
+						alert(response["content"])
+					}
+
+					reclog(title+Html_$T("G2MU::上传成功"),2);
+				}else{
+					reclog(title+Html_$T("TUdi::没有完成上传，演示上传地址无需关注上传结果，只要浏览器控制台内Network面板内看到的请求数据结构是预期的就ok了。"), "#d8c1a0");
+					
+					console.error(Html_xT(title+Html_$T("HjDi::上传失败")),xhr.status,xhr.responseText);
+				};
+			};
+		};
+	};
+	reclog(Html_$T("QnSI::开始上传到{1}，请求稍后...",0,api));
+
+	/***方式一：将blob文件转成base64纯文本编码，使用普通application/x-www-form-urlencoded表单上传***/
+	var reader=new FileReader();
+	reader.onloadend=function(){
+		//var postData="";
+		//postData+="voice_type="+encodeURIComponent(blob.type);//告诉后端，这个录音是什么格式的，可能前后端都固定的mp3可以不用写
+		//postData+="&voice_data="+encodeURIComponent((/.+;\s*base64\s*,\s*(.+)$/i.exec(reader.result)||[])[1]) //录音文件内容，后端进行base64解码成二进制
+		//...其他表单参数
+		//console.log(reader.result)
+		var postData={
+			"voice_type":"mp3",
+			"voice_data": (/.+;\s*base64\s*,\s*(.+)$/i.exec(reader.result)||[])[1]
+		}
+		//encodeURIComponent((/.+;\s*base64\s*,\s*(.+)$/i.exec(reader.result)||[])[1])
+		
+		xhr.open("POST", api);
+		xhr.setRequestHeader("Content-Type","application/json");
+		xhr.onreadystatechange=onreadystatechange(Html_$T("gG1f::上传方式一【Base64】"));
+		xhr.send(JSON.stringify(postData));
+	};
+	reader.readAsDataURL(blob);
+
+};
+
+
+/**本地下载  Local download**/
+function recLocalDown(){
+	if(!recBlob){
+		reclog(Html_$T("M86h::请先录音，然后停止后再下载"),1);
+		return;
+	};
+	var cls=("a"+Math.random()).replace(".","");
+	recdown64.lastCls=cls;
+	reclog(Html_$T('vJPl::点击 ')+'<span class="'+cls+'"></span>'+Html_$T('Whtc:: 下载，或复制文本')
+		+'<button onclick="recdown64(\''+cls+'\')">'+Html_$T('XK4l::生成Base64文本')+'</button><span class="'+cls+'_b64"></span>');
+	
+	var fileName="recorder-"+Date.now()+".mp3";
+	var downA=document.createElement("A");
+	downA.innerHTML=Html_$T("g8Fy::下载 ")+fileName;
+	downA.href=(window.URL||webkitURL).createObjectURL(recBlob);
+	downA.download=fileName;
+	document.querySelector("."+cls).appendChild(downA);
+	if(/mobile/i.test(navigator.userAgent)){
+		alert(Html_xT(Html_$T("DIEK::因移动端绝大部分国产浏览器未适配Blob Url的下载，所以本demo代码在移动端未调用downA.click()。请尝试点击日志中显示的下载链接下载")));
+	}else{
+		downA.click();
+	}
+	
+	//不用了时需要revokeObjectURL，否则霸占内存
+	//(window.URL||webkitURL).revokeObjectURL(downA.href);
+};
+function recdown64(cls){
+	var el=document.querySelector("."+cls+"_b64");
+	if(recdown64.lastCls!=cls){
+		el.innerHTML='<span style="color:red">'+Html_$T("eKKx::老的数据没有保存，只支持最新的一条")+'</span>';
+		return;
+	}
+	var reader = new FileReader();
+	reader.onloadend = function() {
+		el.innerHTML='<textarea></textarea>';
+		el.querySelector("textarea").value=reader.result;
+	};
+	reader.readAsDataURL(recBlob);
+};
+
+var formatMs=function(ms,all){
+	var ss=ms%1000;ms=(ms-ss)/1000;
+	var s=ms%60;ms=(ms-s)/60;
+	var m=ms%60;ms=(ms-m)/60;
+	var h=ms;
+	var t=(h?h+":":"")
+		+(all||h+m?("0"+m).substr(-2)+":":"")
+		+(all||h+m+s?("0"+s).substr(-2)+"″":"")
+		+("00"+ss).substr(-3);
+	return t;
+};
+</script>
+
+
+
+
+<style>
+body{
+	word-wrap: break-word;
+	background:#f5f5f5 center top no-repeat;
+	background-size: auto 680px;
+}
+pre{
+	white-space:pre-wrap;
+}
+a{
+	text-decoration: none;
+	color:#06c;
+}
+a:hover{
+	color:#f00;
+}
+
+.main{
+	max-width:700px;
+	margin:0 auto;
+	padding-bottom:80px
+}
+
+.mainBox{
+	margin-top:12px;
+	padding: 12px;
+	border-radius: 6px;
+	background: #fff;
+	--border: 1px solid rgb(0,77,155)
+	box-shadow: 2px 2px 3px #aaa;
+}
+
+.btn-container{
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	align-content: center;
+}
+
+#rec_result_area{
+	margin-top:20px;
+	display: block;
+	min-height: 100px;
+	width:100%;
+	border-radius: 6px;
+	box-shadow: 1px 1px 5px #888;
+}
+#rec_result{
+	width: 90%;
+	margin:auto;
+	padding-top:10px;
+	font-weight: bold;
+}
+
+.btns button{
+	display: block;
+	cursor: pointer;
+	border: none;
+	border-radius: 3px;
+	background: rgb(0,77,155);
+	color:#fff;
+	padding: 0 15px;
+	
+	line-height: 36px;
+	height: 36px;
+	overflow: hidden;
+	vertical-align: middle;
+	margin-top: 20px;
+	
+}
+.btns button:active{
+	background: #f00;
+}
+.custom-btn{
+	border-radius: 100%;
+	width:45%;
+	height:100px;
+	user-select: none;
+	margin:auto;
+	font-size: 17px;
+	font-weight: bold;
+	margin-top: 20px;
+}
+
+.pd{
+	padding:0 0 6px 0;
+}
+.lb{
+	display:inline-block;
+	vertical-align: middle;
+	background:#00940e;
+	color:#fff;
+	font-size:14px;
+	padding:2px 8px;
+	border-radius: 99px;
+}
+</style>
+
+</body>
+</html>
