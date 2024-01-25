@@ -77,6 +77,16 @@
 		<div class="modal">
 		  <div class="modal-title">识别结果</div>
 		  <div class="modal-content">
+			<table id="post_process_result_table" style="margin:auto;font-size:18px;border-top:2px solid black;border-bottom: 2px solid black;">
+				<thead>
+					<tr>
+						<th>策略名</th>
+						<th>处理结果</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
 			<div id="modalText">
 				<span style="color:green;">测试数据测试数据测试数据测试数据测试数据测试数据测试数据测试数据</span>
 			</div>
@@ -91,7 +101,8 @@
 	
 </div>
 <script>
-	var rec_pred_result;
+	var rec_pred_result;//识别的预测结果
+	var rec_post_process_result;
 	function send_rec_pred_result(is_correct){
 		var xhr=new XMLHttpRequest();
 		var api="http://192.168.0.136:52777/voc_rec_result";
@@ -114,7 +125,8 @@
 			var postData={
 				"predict_is_correct":is_correct,
 				"voice_data": (/.+;\s*base64\s*,\s*(.+)$/i.exec(reader.result)||[])[1],
-				"pred_result": rec_pred_result
+				"pred_result": rec_pred_result,
+				"post_process_result":rec_post_process_result
 			}
 			xhr.open("POST", api);
 			xhr.setRequestHeader("Content-Type","application/json");
@@ -150,9 +162,10 @@
 var rec,wave,recBlob;
 var is_record_flag=false;//是否正在录音
 var start_and_stop_btn=document.getElementById("rec_start_or_stop_btn");
-var audio_ele=document.getElementById("custom-audio")
-var rec_result=document.getElementById("rec_result")
-var modal_text=document.getElementById("modalText")
+var audio_ele=document.getElementById("custom-audio");
+var rec_result=document.getElementById("rec_result");
+var modal_text=document.getElementById("modalText");
+var post_process_result_table=document.getElementById("post_process_result_table").getElementsByTagName('tbody')[0];
 
 var Html_$T=function(zh){
 	return zh;
@@ -315,8 +328,20 @@ function recUpload(){
 					console.log(response)
 					if(response["status"]==1){
 						rec_result.innerHTML="识别结果: <span style='color:green;'>"+response["pred_result"]+"<\span>"
-						modal_text.innerHTML="识别结果: <span style='color:green;'>"+response["pred_result"]+"<\span>";
+						//post_process_result_table.insertRow()
+						modal_text.innerHTML=""
+						post_process_result_table.innerHTML="";
+						response["post_process_result"].forEach(element => {
+							var newRow = post_process_result_table.insertRow(post_process_result_table.rows.length);
+							var cell1 = newRow.insertCell(0);
+							var cell2 = newRow.insertCell(1);
+							cell1.innerHTML = element[0];
+							cell2.innerHTML = element[1];
+						});
+						modal_text.innerHTML+="<span>识别结果: <span style='color:green;'>"+response["pred_result"]+"<\span><\span>";
 						rec_pred_result=response["pred_result"]
+						rec_post_process_result=response["post_process_result"]
+						console.log(rec_post_process_result)
 						openModal();
 					}else{
 						alert(response["content"])
